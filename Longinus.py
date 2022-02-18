@@ -1,6 +1,7 @@
 import datetime
 import threading
 import selenium
+import re
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -55,6 +56,11 @@ def obtain_browser():
     return browser
 
 
+def write_to_file(url):
+    with open("results.txt", "a+") as file:
+        file.write(url + "\n")
+        file.close()
+
 # Strategies
 ONLY_ORIGIN_DOMAIN = 0  # doesnt follow links that lead to a different domain
 ONLY_SUBDOMAINS = 2  # follow only subdomains
@@ -68,7 +74,7 @@ class Longinus:
             self.url = url
             self.depth = depth
 
-    def __init__(self, name: str, threads: int = 4, wait_for_page_load_ms: int = 500):
+    def __init__(self, name: str, threads: int = 4, wait_for_page_load_ms: int = 500, when_find: callable = write_to_file):
         self.name = name
         self.number_of_threads = threads
         self.threads = []
@@ -81,6 +87,8 @@ class Longinus:
         self.depth = 0
         self.strategy = SHALLOW_LINKS
         self.bonus = 1
+        self.total_references_found = 0
+        self.callback = when_find
 
         self.startup_message()
 
@@ -131,21 +139,31 @@ class Longinus:
 
         return browser.page_source
 
-    def queue_new_links(self, links, depth, url, thread_id=0):
-        if depth > 0:
-            page_links = 0
-            for link in links:
-                try:
-                    link = urljoin(url, link["href"])
-                except KeyError:
-                    continue
-                if (not link in self.crawled_links) and self.match_current_strategy(url, link):
-                    page_links += 1
-                    self.queue.append(self.QueuedURL(link, self.get_new_depth(url, link, depth)))
-                    self.total_urls += 1
+    def queue_new_links(self, html, depth, url, thread_id=0):
+        links = html.find_all('a')
+        page_links = 0
+        for link in links:
+            try:
+                link = urljoin(url, link["href"])
+            except KeyError:
+                continue
+            if (not link in self.crawled_links) and self.match_current_strategy(url, link):
+                page_links += 1
+                self.queue.append(self.QueuedURL(link, self.get_new_depth(url, link, depth)))
+                self.total_urls += 1
 
-            if page_links != 0:
-                self.log(colored("{} new links found at {}".format(page_links, url), "blue"), thread=thread_id)
+        if page_links != 0:
+            self.log(colored("{} new links found at {}".format(page_links, url), "blue"), thread=thread_id)
+
+    def search(self, thread_id, keywords, page, url):
+        total_cases = 0
+        for word in keywords:
+            cases = page.find_all(string=re.compile(word, re.IGNORECASE))
+            if len(cases) > 0:
+                self.log(colored("Found a match for {} in {}".format(word, url), "magenta", "on_grey", attrs=["bold"]), thread=thread_id)
+                total_cases += 1
+                self.callback(url)
+        return total_cases > 0
 
     def crawl(self, thread_id, keywords: list, browser):
         while len(self.queue) > 0:
@@ -168,11 +186,20 @@ class Longinus:
 
             html = BeautifulSoup(page_source, features="lxml")
 
-            links = html.find_all('a')
+            self.log(colored("Searching for references in {}".format(url), "cyan", None, attrs=["bold"]), thread=thread_id)
 
-            # SCRAPE DATA HERE
+            found = self.search(thread_id, keywords, html, url)
 
-            self.queue_new_links(links, depth, url, thread_id)
+            if found:
+                depth += self.bonus
+            else:
+                self.log(colored("No references found in {}".format(url), "cyan", None, attrs=["bold"]),
+                         thread=thread_id)
+
+            if depth > 0:
+                self.queue_new_links(html, depth, url, thread_id)
+
+            self.log("Exiting {}".format(url), color="red", thread=thread_id)
 
         self.log(colored("Thread {} finished".format(thread_id), "red", "on_white"))
 
@@ -218,6 +245,7 @@ class Longinus:
             search_for = []
 
         self.log(colored("Starting crawling at depth {}".format(self.depth), "blue"))
+        self.log(colored("Searching for {}".format(search_for), "blue"))
 
         self.total_urls = len(self.queue)
 
@@ -239,4 +267,4 @@ class Longinus:
 
 longinus = Longinus("saint-longinus", 4)
 longinus.setup(depth=3)
-longinus.start()
+longinus.start(["eleCtron", "reaCt"])
