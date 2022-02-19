@@ -14,6 +14,8 @@ from time import sleep, time
 
 init()
 
+VERSION = "1.0.0"
+
 
 # TODO handle uninstalled modules
 
@@ -57,6 +59,10 @@ def obtain_browser():
 
 
 def write_to_file(url):
+    # ignore google search results page
+    if "google.com" in url or "webcache.googleusercontent.com" in url:
+        return
+
     with open("results.txt", "a+") as file:
         file.write(url + "\n")
         file.close()
@@ -81,7 +87,7 @@ class Longinus:
         self.crawled_links = []
         self.total_urls_crawled = 0
         self.total_urls = 0
-        self.urls = ["https://hugosouza.com"]
+        self.urls = None
         self.queue = []
         self.wait = wait_for_page_load_ms
         self.depth = 0
@@ -91,6 +97,9 @@ class Longinus:
         self.callback = when_find
 
         self.startup_message()
+
+    def set_url(self, new_urls):
+        self.urls = new_urls
 
     def log(self, msg, color=None, on_color=None, thread: int = 0):
         t = datetime.datetime.now()
@@ -157,6 +166,7 @@ class Longinus:
 
     def search(self, thread_id, keywords, page, url):
         total_cases = 0
+        page = page.body
         for word in keywords:
             cases = page.find_all(string=re.compile(word, re.IGNORECASE))
             if len(cases) > 0:
@@ -219,7 +229,11 @@ class Longinus:
 
         page_links = []
         for link in links:
-            link = urljoin(url, link["href"])
+            try:
+                link = urljoin(url, link["href"])
+            except KeyError:
+                continue
+
             page_links.append(self.QueuedURL(link, depth))
 
         if len(page_links) < n:
@@ -229,20 +243,24 @@ class Longinus:
         return page_links
 
     def setup(self, depth: int = 3, strategy=SHALLOW_LINKS, bonus_when_match=1):
-        for url in self.urls:
-            self.queue.append(self.QueuedURL(url, depth))
+        if type(self.urls) == list:
+            for url in self.urls:
+                self.queue.append(self.QueuedURL(url, depth))
 
-        if len(self.urls) < self.number_of_threads:
-            temp_browser = obtain_browser()
-            self.queue += self.get_n_inside_links(self.urls[0], temp_browser, self.number_of_threads, depth)
+            if len(self.urls) < self.number_of_threads:
+                temp_browser = obtain_browser()
+                self.queue += self.get_n_inside_links(self.urls[0], temp_browser, self.number_of_threads, depth)
 
         self.depth = depth
         self.strategy = strategy
         self.bonus = bonus_when_match
 
-    def start(self, search_for=None):
-        if search_for is None:
-            search_for = []
+    def start(self, search_for: list):
+        if self.urls is None:
+            self.urls = []
+            for words in search_for:
+                self.urls.append("https://www.google.com/search?q=" + words)
+            self.setup(self.depth, self.strategy, self.bonus)
 
         self.log(colored("Starting crawling at depth {}".format(self.depth), "blue"))
         self.log(colored("Searching for {}".format(search_for), "blue"))
@@ -267,4 +285,5 @@ class Longinus:
 
 longinus = Longinus("saint-longinus", 4)
 longinus.setup(depth=3)
-longinus.start(["eleCtron", "reaCt"])
+
+longinus.start(["sesame seeds"])
