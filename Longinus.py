@@ -2,6 +2,7 @@ import datetime
 import threading
 import selenium
 import re
+import html2text
 
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -10,6 +11,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from colorama import init
 from termcolor import colored
 from urllib.parse import urljoin
+from urllib.parse import urlparse
 from time import sleep, time
 
 init()
@@ -23,14 +25,23 @@ def are_from_same_domain(url1, url2):
     return url1 in url2
 
 
-def compDom(URL1, URL2):
-    URL1Split = URL1.split(".")
-    URL2Split = URL2.split(".")
-    a = URL1Split[::-1]
-    b = URL2Split[::-1]
-    domain1 = a[1] + "." + a[0]
-    domain2 = b[1] + "." + b[0]
-    return domain1 == domain2
+def comp_dom(url1, url2):
+    domain1 = urlparse(url1).hostname
+    domain2 = urlparse(url2).hostname
+
+    if domain1 != domain2:
+        return False
+
+    domain1 = domain1.split(".")
+    domain2 = domain2.split(".")
+
+    url1 = url1.replace("://", ".").split(".")
+    url2 = url2.replace("://", ".").split(".")
+
+    if url1[url1.index(domain1[0])-1] != url2[url2.index(domain2[0])-1]:
+        return False
+
+    return True
 
 
 def obtain_browser():
@@ -58,20 +69,33 @@ def obtain_browser():
     return browser
 
 
-def write_to_file(url):
-    # ignore google search results page
-    if "google.com" in url or "webcache.googleusercontent.com" in url:
+def write_to_file(url, keyword, full_text):
+    if "google.com" in url:
         return
-
     with open("results.txt", "a+") as file:
-        file.write(url + "\n")
+        file.write("{}: {} \n".format(url, keyword))
+        file.write(full_text + "\n\n")
         file.close()
+
 
 # Strategies
 ONLY_ORIGIN_DOMAIN = 0  # doesnt follow links that lead to a different domain
 ONLY_SUBDOMAINS = 2  # follow only subdomains
-FOLLOW_ALL_LINKS = 3  # follows everything tat comes up on the page
+FOLLOW_ALL_LINKS = 3  # follows everything that comes up on the page
 SHALLOW_LINKS = 4  # follows links that lead to other domains with depth 0
+
+
+def get_text(page):
+    for tag in page(["script", "style"]):
+        tag.decompose()
+    return html2text.html2text(page.prettify())
+
+
+def default_filter(url):
+    # ignore google search results page
+    if "webcache.googleusercontent.com" in url:
+        return True
+    return False
 
 
 class Longinus:
@@ -80,7 +104,8 @@ class Longinus:
             self.url = url
             self.depth = depth
 
-    def __init__(self, name: str, threads: int = 4, wait_for_page_load_ms: int = 500, when_find: callable = write_to_file):
+    def __init__(self, name: str, threads: int = 4, wait_for_page_load_ms: int = 500,
+                 when_find: callable = write_to_file):
         self.name = name
         self.number_of_threads = threads
         self.threads = []
@@ -95,11 +120,16 @@ class Longinus:
         self.bonus = 1
         self.total_references_found = 0
         self.callback = when_find
+        self.filtering_function = default_filter
+        self.issetup = False
 
         self.startup_message()
 
     def set_url(self, new_urls):
         self.urls = new_urls
+
+    def set_filter(self, new_filter):
+        self.filtering_function = new_filter
 
     def log(self, msg, color=None, on_color=None, thread: int = 0):
         t = datetime.datetime.now()
@@ -128,12 +158,12 @@ class Longinus:
         elif self.strategy == ONLY_SUBDOMAINS:
             return are_from_same_domain(origin, link)
         elif self.strategy == ONLY_ORIGIN_DOMAIN:
-            return compDom(origin, link)
+            return comp_dom(origin, link)
 
     def get_new_depth(self, origin, link, current_depth):
         if self.strategy == SHALLOW_LINKS and not are_from_same_domain(link, origin):
             return 0
-        return current_depth-1
+        return current_depth - 1
 
     def hit_page(self, browser, url, thread_id=0):
         start = time()
@@ -156,7 +186,7 @@ class Longinus:
                 link = urljoin(url, link["href"])
             except KeyError:
                 continue
-            if (not link in self.crawled_links) and self.match_current_strategy(url, link):
+            if (link not in self.crawled_links) and self.match_current_strategy(url, link):
                 page_links += 1
                 self.queue.append(self.QueuedURL(link, self.get_new_depth(url, link, depth)))
                 self.total_urls += 1
@@ -170,9 +200,11 @@ class Longinus:
         for word in keywords:
             cases = page.find_all(string=re.compile(word, re.IGNORECASE))
             if len(cases) > 0:
-                self.log(colored("Found a match for {} in {}".format(word, url), "magenta", "on_grey", attrs=["bold"]), thread=thread_id)
+                self.log(colored("Found a match for {} in {}".format(word, url), "magenta", "on_grey", attrs=["bold"]),
+                         thread=thread_id)
                 total_cases += 1
-                self.callback(url)
+                full_text = get_text(page)
+                self.callback(url, word, full_text)
         return total_cases > 0
 
     def crawl(self, thread_id, keywords: list, browser):
@@ -186,6 +218,9 @@ class Longinus:
             if url in self.crawled_links:
                 self.log(colored("Skipping {}...".format(url), "red"), thread=thread_id)
                 continue
+            elif self.filtering_function(url):
+                self.log(colored("{} filtered...".format(url), "red"), thread=thread_id)
+                continue
 
             self.log(colored("({}/{})".format(self.total_urls_crawled, self.total_urls), "grey", "on_white") +
                      " Crawling over {} - Depth: {}".format(url, depth), thread=thread_id)
@@ -196,7 +231,8 @@ class Longinus:
 
             html = BeautifulSoup(page_source, features="lxml")
 
-            self.log(colored("Searching for references in {}".format(url), "cyan", None, attrs=["bold"]), thread=thread_id)
+            self.log(colored("Searching for references in {}".format(url), "cyan", None, attrs=["bold"]),
+                     thread=thread_id)
 
             found = self.search(thread_id, keywords, html, url)
 
@@ -212,6 +248,7 @@ class Longinus:
             self.log("Exiting {}".format(url), color="red", thread=thread_id)
 
         self.log(colored("Thread {} finished".format(thread_id), "red", "on_white"))
+        browser.quit()
 
     def get_n_inside_links(self, url, browser, n, depth):
         browser.get(url)
@@ -237,12 +274,13 @@ class Longinus:
             page_links.append(self.QueuedURL(link, depth))
 
         if len(page_links) < n:
-            new_links = self.get_n_inside_links(page_links[0], browser, n - len(page_links))
+            new_links = self.get_n_inside_links(page_links[0], browser, n - len(page_links), depth-1)
             page_links += new_links
 
         return page_links
 
-    def setup(self, depth: int = 3, strategy=SHALLOW_LINKS, bonus_when_match=1):
+    def setup(self, depth: int = 3, strategy=SHALLOW_LINKS, bonus_when_match: int = 1):
+        self.issetup = True
         if type(self.urls) == list:
             for url in self.urls:
                 self.queue.append(self.QueuedURL(url, depth))
@@ -250,12 +288,23 @@ class Longinus:
             if len(self.urls) < self.number_of_threads:
                 temp_browser = obtain_browser()
                 self.queue += self.get_n_inside_links(self.urls[0], temp_browser, self.number_of_threads, depth)
+        else:
+            temp_browser = obtain_browser()
+            self.queue += self.get_n_inside_links(self.urls[0], temp_browser, self.number_of_threads, depth)
 
         self.depth = depth
         self.strategy = strategy
         self.bonus = bonus_when_match
 
+    def not_setup_error_message(self):
+        return "The Longinus bot {} has not been setup, please call Longinus.setup() before you start crawling \nIf " \
+               "you have any doubts about this method please check the documentation: " \
+               "https://github.com/fatorius/SaintLonginus/blob/main/README.md \n".format(self.name)
+
     def start(self, search_for: list):
+        if not self.issetup:
+            raise AssertionError(self.not_setup_error_message())
+
         if self.urls is None:
             self.urls = []
             for words in search_for:
@@ -270,7 +319,7 @@ class Longinus:
         start = time()
 
         for thread_no in range(self.number_of_threads):
-            self.log("Thread {} starting".format(thread_no))
+            self.log("Thread {} starting".format(thread_no+1))
 
             t = threading.Thread(target=self.crawl, args=(thread_no + 1, search_for,
                                                           obtain_browser()))
@@ -281,9 +330,3 @@ class Longinus:
             thread.join()
 
         self.log(colored("Finished crawling in {:.2f} seconds".format(time() - start), "blue"))
-
-
-longinus = Longinus("saint-longinus", 4)
-longinus.setup(depth=3)
-
-longinus.start(["sesame seeds"])
