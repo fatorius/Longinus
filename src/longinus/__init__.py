@@ -16,7 +16,7 @@ from time import sleep, time
 
 init()
 
-VERSION = "1.0.0"
+VERSION = "1.0.3"
 
 
 # TODO handle uninstalled modules
