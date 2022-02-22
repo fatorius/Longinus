@@ -1,25 +1,96 @@
+#!/usr/bin/env python3
+"""
+Longinus web-crawler 1.0.4 © MIT licensed
+https://pypi.org/project/longinus/
+https://github.com/fatorius/fatorius
+Hugo Souza 2022
+"""
+
 import datetime
 import threading
-import selenium
 import re
-import html2text
+import pip
+import sys
 
-from bs4 import BeautifulSoup
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from colorama import init
-from termcolor import colored
+from os import execl
+from subprocess import check_call
 from urllib.parse import urljoin
 from urllib.parse import urlparse
 from time import sleep, time
 
-init()
 
-VERSION = "1.0.3"
+def install(package):
+    """
+    Automatically installs python pip package and restarts the program
+    This script was taken from https://github.com/revoxhere/duino-coin/blob/master/PC_Miner.py
+    """
+    try:
+        pip.main(["install",  package])
+    except AttributeError:
+        check_call([sys.executable, '-m', 'pip', 'install', package])
 
+    execl(sys.executable, sys.executable, *sys.argv)
 
-# TODO handle uninstalled modules
+try:
+    import html2text
+except ModuleNotFoundError:
+    print("html2text is not installed. "
+          + "Longinus will try to automatically install it "
+          + "If it fails, please manually execute "
+          + "python3 -m pip install html2text")
+    install("html2text")
+
+try:
+    import selenium
+
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service
+except ModuleNotFoundError:
+    print("selenium is not installed. "
+          + "Longinus will try to automatically install it "
+          + "If it fails, please manually execute "
+          + "python3 -m pip install selenium")
+    install("selenium")
+
+try:
+    from bs4 import BeautifulSoup
+except ModuleNotFoundError:
+    print("BeautifulSoup is not installed. "
+          + "Longinus will try to automatically install it "
+          + "If it fails, please manually execute "
+          + "python3 -m pip install beautifulsoup4")
+    install("beautifulsoup4")
+
+try:
+    from webdriver_manager.chrome import ChromeDriverManager
+except ModuleNotFoundError:
+    print("webdriver_manager is not installed. "
+          + "Longinus will try to automatically install it "
+          + "If it fails, please manually execute "
+          + "python3 -m pip install webdriver_manager")
+    install("webdriver_manager")
+
+try:
+    from colorama import init
+    init(autoreset=True)
+except ModuleNotFoundError:
+    print("Colorama is not installed. "
+          + "Longinus will try to automatically install it "
+          + "If it fails, please manually execute "
+          + "python3 -m pip install colorama")
+    install("colorama")
+
+try:
+    from termcolor import colored
+except ModuleNotFoundError:
+    print("termcolor is not installed. "
+          + "Longinus will try to automatically install it "
+          + "If it fails, please manually execute "
+          + "python3 -m pip install termcolor")
+    install("termcolor")
+
+VERSION = "1.0.4"
+
 
 def are_from_same_domain(url1, url2):
     return url1 in url2
@@ -124,6 +195,9 @@ class Longinus:
         self.issetup = False
 
         self.startup_message()
+
+    def set_callback(self, new_callback: callable):
+        self.callback = new_callback
 
     def set_url(self, new_urls):
         self.urls = new_urls
@@ -288,10 +362,7 @@ class Longinus:
             if len(self.urls) < self.number_of_threads:
                 temp_browser = obtain_browser()
                 self.queue += self.get_n_inside_links(self.urls[0], temp_browser, self.number_of_threads, depth)
-        else:
-            temp_browser = obtain_browser()
-            self.queue += self.get_n_inside_links(self.urls[0], temp_browser, self.number_of_threads, depth)
-
+        
         self.depth = depth
         self.strategy = strategy
         self.bonus = bonus_when_match

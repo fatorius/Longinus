@@ -61,6 +61,19 @@ Changes the urls that the crawler is going to take as root when it starts search
 
 When a Longinus object is instantiated, the urls' default value is *None*, in that case, the crawler is going to perform a Google search for each keyword and gather a list of urls from the results to be used as root.
 
+##### set_callback(new_callback: callable):
+Sets what function is going to be executed when there's a reference to a specific keyword on that page. The default function writes the url of that page in a text file called **results.txt**. It must take 3 arguments containing the **url of the page**, **keyword found at the page** and **the whole text of the page**:
+
+  ```python
+  def write_to_file(url, keyword, full_text):
+      if "google.com" in url:
+          return
+      with open("results.txt", "a+") as file:
+          file.write("{}: {} \n".format(url, keyword))
+          file.write(full_text + "\n\n")
+          file.close()
+  ```
+
 ##### set_filter(new_filter: callable)
 
 Sets a new filtering function. A filtering function is used to determinate which pages are going to be crawled and which ones aren't based on their url.
