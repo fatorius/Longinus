@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Longinus web-crawler 1.0.4 © MIT licensed
+Longinus web-crawler 1.1 © MIT licensed
 https://pypi.org/project/longinus/
-https://github.com/fatorius/fatorius
+https://github.com/fatorius/Longinus
 Hugo Souza 2022
 """
 
@@ -11,6 +11,7 @@ import threading
 import re
 import pip
 import sys
+import json
 
 from os import execl
 from subprocess import check_call
@@ -25,11 +26,12 @@ def install(package):
     This script was taken from https://github.com/revoxhere/duino-coin/blob/master/PC_Miner.py
     """
     try:
-        pip.main(["install",  package])
+        pip.main(["install", package])
     except AttributeError:
         check_call([sys.executable, '-m', 'pip', 'install', package])
 
     execl(sys.executable, sys.executable, *sys.argv)
+
 
 try:
     import html2text
@@ -72,6 +74,7 @@ except ModuleNotFoundError:
 
 try:
     from colorama import init
+
     init(autoreset=True)
 except ModuleNotFoundError:
     print("Colorama is not installed. "
@@ -89,7 +92,7 @@ except ModuleNotFoundError:
           + "python3 -m pip install termcolor")
     install("termcolor")
 
-VERSION = "1.0.4"
+VERSION = "1.1"
 
 
 def are_from_same_domain(url1, url2):
@@ -109,7 +112,7 @@ def comp_dom(url1, url2):
     url1 = url1.replace("://", ".").split(".")
     url2 = url2.replace("://", ".").split(".")
 
-    if url1[url1.index(domain1[0])-1] != url2[url2.index(domain2[0])-1]:
+    if url1[url1.index(domain1[0]) - 1] != url2[url2.index(domain2[0]) - 1]:
         return False
 
     return True
@@ -140,11 +143,11 @@ def obtain_browser():
     return browser
 
 
-def write_to_file(url, keyword, full_text):
+def write_to_file(url, keyword, full_text, title):
     if "google.com" in url:
         return
     with open("results.txt", "a+") as file:
-        file.write("{}: {} \n".format(url, keyword))
+        file.write("{} ({}): {} \n".format(title, url, keyword))
         file.write(full_text + "\n\n")
         file.close()
 
@@ -154,6 +157,14 @@ ONLY_ORIGIN_DOMAIN = 0  # doesnt follow links that lead to a different domain
 ONLY_SUBDOMAINS = 2  # follow only subdomains
 FOLLOW_ALL_LINKS = 3  # follows everything that comes up on the page
 SHALLOW_LINKS = 4  # follows links that lead to other domains with depth 0
+
+# Saving frequency
+ULTRA_FREQUENT = 1
+VERY_FREQUENT = 10
+FREQUENT = 25
+NORMAL = 50
+SOMETIMES = 100
+RARELY = 200
 
 
 def get_text(page):
@@ -176,7 +187,7 @@ class Longinus:
             self.depth = depth
 
     def __init__(self, name: str, threads: int = 4, wait_for_page_load_ms: int = 500,
-                 when_find: callable = write_to_file):
+                 when_find: callable = write_to_file, save_bot: bool = False):
         self.name = name
         self.number_of_threads = threads
         self.threads = []
@@ -193,6 +204,10 @@ class Longinus:
         self.callback = when_find
         self.filtering_function = default_filter
         self.issetup = False
+        self.save_bot = save_bot
+        self.saving_frequency = NORMAL
+        self.currently_saving = False
+        self.total_saves = 0
 
         self.startup_message()
 
@@ -203,6 +218,7 @@ class Longinus:
         self.urls = new_urls
 
     def set_filter(self, new_filter):
+        self.log("Filtering function set to {}".format(new_filter.__name__), "green")
         self.filtering_function = new_filter
 
     def log(self, msg, color=None, on_color=None, thread: int = 0):
@@ -224,6 +240,8 @@ class Longinus:
               colored(self.name, "green"))
         print(colored("NUMBER_OF_THREADS:", None, "on_green") + " " +
               colored(str(self.number_of_threads), "green"))
+        print(colored("SAVING BOT:", None, "on_green") + " " +
+              colored(str(self.save_bot), "green"))
         print(colored("=" * 20, "green"))
 
     def match_current_strategy(self, origin, link):
@@ -270,6 +288,7 @@ class Longinus:
 
     def search(self, thread_id, keywords, page, url):
         total_cases = 0
+        title = page.title.string
         page = page.body
         for word in keywords:
             cases = page.find_all(string=re.compile(word, re.IGNORECASE))
@@ -278,11 +297,14 @@ class Longinus:
                          thread=thread_id)
                 total_cases += 1
                 full_text = get_text(page)
-                self.callback(url, word, full_text)
+                self.callback(url, word, full_text, title)
         return total_cases > 0
 
     def crawl(self, thread_id, keywords: list, browser):
         while len(self.queue) > 0:
+            while self.currently_saving:
+                sleep(5)
+
             current = self.queue.pop(0)
             url = current.url
             depth = current.depth
@@ -321,8 +343,32 @@ class Longinus:
 
             self.log("Exiting {}".format(url), color="red", thread=thread_id)
 
+            if self.save_bot:
+                if self.total_urls_crawled % self.saving_frequency == 0:
+                    self.currently_saving = True
+                    self.log("Currently saving bot, pausing threads", "red", "on_yellow")
+                    self.save_state()
+                    self.currently_saving = False
+
         self.log(colored("Thread {} finished".format(thread_id), "red", "on_white"))
         browser.quit()
+
+    def save_state(self):
+        save_filename = "{}-{}".format(self.name, self.total_saves)
+        with open(save_filename, "a+") as file:
+            file.write('{' + '"name": "{}", "threads": {}, "wait_for_load": {}, "strategy": "{}", "bonus": {}, '
+                       '"saving_frequency": {}, "depth": {}, "seen_urls": [\n"google.com"'.format(
+                self.name, self.number_of_threads, self.wait, self.strategy, self.bonus, self.saving_frequency, self.depth
+            ))
+            for seen_url in self.crawled_links:
+                file.write(',\n"{}"'.format(seen_url))
+            file.write('], "queue":[{}')
+            for item in self.queue:
+                file.write(',\n{' + '"link": "{}", "depth": {}'.format(item.url, item.depth) + '}')
+            file.write(']}')
+            file.close()
+        self.total_saves += 1
+        self.log("Bot successfully saved to {}, resuming threads".format(save_filename), "red", "on_yellow")
 
     def get_n_inside_links(self, url, browser, n, depth):
         browser.get(url)
@@ -348,12 +394,12 @@ class Longinus:
             page_links.append(self.QueuedURL(link, depth))
 
         if len(page_links) < n:
-            new_links = self.get_n_inside_links(page_links[0], browser, n - len(page_links), depth-1)
+            new_links = self.get_n_inside_links(page_links[0], browser, n - len(page_links), depth - 1)
             page_links += new_links
 
         return page_links
 
-    def setup(self, depth: int = 3, strategy=SHALLOW_LINKS, bonus_when_match: int = 1):
+    def setup(self, depth: int = 3, strategy=SHALLOW_LINKS, bonus_when_match: int = 1, saving_frequency=NORMAL):
         self.issetup = True
         if type(self.urls) == list:
             for url in self.urls:
@@ -362,15 +408,20 @@ class Longinus:
             if len(self.urls) < self.number_of_threads:
                 temp_browser = obtain_browser()
                 self.queue += self.get_n_inside_links(self.urls[0], temp_browser, self.number_of_threads, depth)
-        
+
         self.depth = depth
         self.strategy = strategy
         self.bonus = bonus_when_match
 
+        if self.save_bot:
+            self.saving_frequency = saving_frequency
+
+        self.log("Longinus has been successfully setup", "green")
+
     def not_setup_error_message(self):
         return "The Longinus bot {} has not been setup, please call Longinus.setup() before you start crawling \nIf " \
                "you have any doubts about this method please check the documentation: " \
-               "https://github.com/fatorius/SaintLonginus/blob/main/README.md \n".format(self.name)
+               "https://github.com/fatorius/Longinus/blob/main/README.md \n".format(self.name)
 
     def start(self, search_for: list):
         if not self.issetup:
@@ -380,7 +431,7 @@ class Longinus:
             self.urls = []
             for words in search_for:
                 self.urls.append("https://www.google.com/search?q=" + words)
-            self.setup(self.depth, self.strategy, self.bonus)
+            self.setup(self.depth, self.strategy, self.bonus, self.saving_frequency)
 
         self.log(colored("Starting crawling at depth {}".format(self.depth), "blue"))
         self.log(colored("Searching for {}".format(search_for), "blue"))
@@ -390,7 +441,7 @@ class Longinus:
         start = time()
 
         for thread_no in range(self.number_of_threads):
-            self.log("Thread {} starting".format(thread_no+1))
+            self.log("Thread {} starting".format(thread_no + 1))
 
             t = threading.Thread(target=self.crawl, args=(thread_no + 1, search_for,
                                                           obtain_browser()))
@@ -401,3 +452,32 @@ class Longinus:
             thread.join()
 
         self.log(colored("Finished crawling in {:.2f} seconds".format(time() - start), "blue"))
+
+
+def load_bot_from_save(save_filename: str):
+    loaded_bot = None
+
+    with open(save_filename, "r") as file:
+        obj = json.loads(file.read())
+
+        bot = Longinus(obj["name"], obj["threads"], obj["wait_for_load"], save_bot=True)
+
+        bot.crawled_links = obj["seen_urls"]
+
+        queue_obj = obj["queue"]
+        saved_queue = []
+
+        queue_obj.pop(0)
+
+        for item in queue_obj:
+            saved_queue.append(Longinus.QueuedURL(item["link"], item["depth"]))
+
+        bot.queue = saved_queue
+
+        bot.setup(obj["depth"], obj["strategy"], obj["bonus"], obj["saving_frequency"])
+
+        loaded_bot = bot
+
+        file.close()
+
+    return loaded_bot
