@@ -1,4 +1,4 @@
-# SaintLonginus
+# Longinus
 
 **Version 1.1**
 
