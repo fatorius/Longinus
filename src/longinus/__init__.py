@@ -9,6 +9,8 @@ Hugo Souza 2022
 import datetime
 import threading
 import re
+
+import bs4
 import pip
 import sys
 import json
@@ -93,6 +95,14 @@ except ModuleNotFoundError:
     install("termcolor")
 
 VERSION = "1.1"
+
+
+def lxml_installed():
+    try:
+        html = BeautifulSoup("<html><h1>This is a test</h1></html", features="lxml")
+        return True
+    except bs4.FeatureNotFound:
+        return False
 
 
 def are_from_same_domain(url1, url2):
@@ -208,6 +218,13 @@ class Longinus:
         self.saving_frequency = NORMAL
         self.currently_saving = False
         self.total_saves = 0
+        self.must_contain_words = []
+        self.must_not_contain_words = []
+
+        if not lxml_installed():
+            self.log("lxml module wasn't found, trying to install before continuing...", "red")
+            install("lxml")
+            self.log("lxml module wasn't found, trying to install before continuing...", "green")
 
         self.startup_message()
 
@@ -286,19 +303,38 @@ class Longinus:
         if page_links != 0:
             self.log(colored("{} new links found at {}".format(page_links, url), "blue"), thread=thread_id)
 
+    def analyse_text(self, text):
+        text = text.lower()
+
+        if len(self.must_contain_words) > 0:
+            for word in self.must_contain_words:
+                if text.count(word["word"]) <= word["frequency"]:
+                    return False
+
+        if len(self.must_not_contain_words) > 0:
+            for word in self.must_not_contain_words:
+                if text.count(word["word"]) >= word["frequency"]:
+                    return False
+        return True
+
     def search(self, thread_id, keywords, page, url):
-        total_cases = 0
         title = page.title.string
         page = page.body
         for word in keywords:
+
             cases = page.find_all(string=re.compile(word, re.IGNORECASE))
-            if len(cases) > 0:
-                self.log(colored("Found a match for {} in {}".format(word, url), "magenta", "on_grey", attrs=["bold"]),
+
+            if len(cases) == 0:
+                continue
+
+            text = get_text(page)
+
+            if self.analyse_text(page, text):
+                self.log(colored("Found a match in {}".format(url), "magenta", "on_grey", attrs=["bold"]),
                          thread=thread_id)
-                total_cases += 1
-                full_text = get_text(page)
-                self.callback(url, word, full_text, title)
-        return total_cases > 0
+                self.callback(url, word, get_text(page), title)
+                return True
+        return False
 
     def crawl(self, thread_id, keywords: list, browser):
         while len(self.queue) > 0:
@@ -357,8 +393,9 @@ class Longinus:
         save_filename = "{}-{}".format(self.name, self.total_saves)
         with open(save_filename, "a+") as file:
             file.write('{' + '"name": "{}", "threads": {}, "wait_for_load": {}, "strategy": "{}", "bonus": {}, '
-                       '"saving_frequency": {}, "depth": {}, "seen_urls": [\n"google.com"'.format(
-                self.name, self.number_of_threads, self.wait, self.strategy, self.bonus, self.saving_frequency, self.depth
+                             '"saving_frequency": {}, "depth": {}, "seen_urls": [\n"google.com"'.format(
+                self.name, self.number_of_threads, self.wait, self.strategy, self.bonus, self.saving_frequency,
+                self.depth
             ))
             for seen_url in self.crawled_links:
                 file.write(',\n"{}"'.format(seen_url))
@@ -423,7 +460,28 @@ class Longinus:
                "you have any doubts about this method please check the documentation: " \
                "https://github.com/fatorius/Longinus/blob/main/README.md \n".format(self.name)
 
-    def start(self, search_for: list):
+    def reset_attributes(self):
+        self.must_contain_words = []
+        self.must_not_contain_words = []
+        self.urls = []
+        self.total_urls = 0
+
+    def start(self, search_for: list, must_contain=None, must_not_contain=None):
+        # {word: "x", frequency: 1}
+        if must_not_contain is None:
+            must_not_contain = []
+        else:
+            if type(must_contain) == str:
+                self.log("") # TODO write warning here
+        if must_contain is None:
+            must_contain = []
+        else:
+            if type(must_contain) == str:
+                self.log("") # TODO write warning here
+
+        self.must_contain_words = must_contain
+        self.must_not_contain_words = must_not_contain
+
         if not self.issetup:
             raise AssertionError(self.not_setup_error_message())
 
@@ -452,6 +510,8 @@ class Longinus:
             thread.join()
 
         self.log(colored("Finished crawling in {:.2f} seconds".format(time() - start), "blue"))
+
+        self.reset_attributes()
 
 
 def load_bot_from_save(save_filename: str):
