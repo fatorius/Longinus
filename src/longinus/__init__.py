@@ -10,7 +10,6 @@ import datetime
 import threading
 import re
 
-import bs4
 import pip
 import sys
 import json
@@ -99,7 +98,7 @@ VERSION = "1.1"
 
 def lxml_installed():
     try:
-        html = BeautifulSoup("<html><h1>This is a test</h1></html", features="lxml")
+        BeautifulSoup("<html><h1>This is a test</h1></html", features="lxml")
         return True
     except FeatureNotFound:
         return False
