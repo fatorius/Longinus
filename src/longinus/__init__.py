@@ -106,7 +106,9 @@ def lxml_installed():
 
 
 def are_from_same_domain(url1, url2):
-    return url1 in url2
+    origin_domain = urlparse(url1).hostname
+
+    return origin_domain in url2
 
 
 def comp_dom(url1, url2):
