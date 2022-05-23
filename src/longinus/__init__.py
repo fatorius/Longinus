@@ -329,7 +329,7 @@ class Longinus:
 
             text = get_text(page)
 
-            if self.analyse_text(page, text):
+            if self.analyse_text(text):
                 self.log(colored("Found a match in {}".format(url), "magenta", "on_grey", attrs=["bold"]),
                          thread=thread_id)
                 self.callback(url, word, get_text(page), title)
@@ -471,13 +471,19 @@ class Longinus:
         if must_not_contain is None:
             must_not_contain = []
         else:
-            if type(must_contain) == str:
-                self.log("") # TODO write warning here
+            if type(must_not_contain[0]) != dict:
+                self.log('WARNING: The must_not_contain argument is expected to be a list of dicts such as {"word": '
+                         '"x", "frequency": 1}. \nCheck out the documentation in order to get the proper usage of '
+                         'these functionalities', "yellow")
+                self.log("WARNING: must_not_contain is going to be None at {}".format(self.name), "red")
         if must_contain is None:
             must_contain = []
         else:
-            if type(must_contain) == str:
-                self.log("") # TODO write warning here
+            if type(must_contain[0]) != dict:
+                self.log('WARNING: The must_contain argument is expected to be a list of dicts such as {"word": '
+                         '"x", "frequency": 1}. \nCheck out the documentation in order to get the proper usage of '
+                         'these functionalities', "yellow")
+                self.log("WARNING: must_contain is going to be None at {}".format(self.name), "red")
 
         self.must_contain_words = must_contain
         self.must_not_contain_words = must_not_contain
