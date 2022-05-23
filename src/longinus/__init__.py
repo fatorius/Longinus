@@ -57,7 +57,7 @@ except ModuleNotFoundError:
     install("selenium")
 
 try:
-    from bs4 import BeautifulSoup
+    from bs4 import BeautifulSoup, FeatureNotFound
 except ModuleNotFoundError:
     print("BeautifulSoup is not installed. "
           + "Longinus will try to automatically install it "
@@ -101,7 +101,7 @@ def lxml_installed():
     try:
         html = BeautifulSoup("<html><h1>This is a test</h1></html", features="lxml")
         return True
-    except bs4.FeatureNotFound:
+    except FeatureNotFound:
         return False
 
 
