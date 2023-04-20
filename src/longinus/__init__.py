@@ -40,7 +40,7 @@ except ModuleNotFoundError:
     print("html2text is not installed. "
           + "Longinus will try to automatically install it "
           + "If it fails, please manually execute "
-          + "python3 -m pip install html2text")
+          + "python3 -m pip install html2text\n")
     install("html2text")
 
 try:
@@ -49,28 +49,28 @@ try:
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
 except ModuleNotFoundError:
-    print("selenium is not installed. "
-          + "Longinus will try to automatically install it "
-          + "If it fails, please manually execute "
-          + "python3 -m pip install selenium")
+    print("selenium is not installed. \n"
+          + "Longinus will try to automatically install it \n"
+          + "If it fails, please manually execute \n"
+          + "python3 -m pip install selenium\n")
     install("selenium")
 
 try:
     from bs4 import BeautifulSoup, FeatureNotFound
 except ModuleNotFoundError:
-    print("BeautifulSoup is not installed. "
-          + "Longinus will try to automatically install it "
-          + "If it fails, please manually execute "
-          + "python3 -m pip install beautifulsoup4")
+    print("BeautifulSoup is not installed. \n"
+          + "Longinus will try to automatically install it \n"
+          + "If it fails, please manually execute \n"
+          + "python3 -m pip install beautifulsoup4\n")
     install("beautifulsoup4")
 
 try:
     from webdriver_manager.chrome import ChromeDriverManager
 except ModuleNotFoundError:
-    print("webdriver_manager is not installed. "
-          + "Longinus will try to automatically install it "
-          + "If it fails, please manually execute "
-          + "python3 -m pip install webdriver_manager")
+    print("webdriver_manager is not installed. \n"
+          + "Longinus will try to automatically install it \n"
+          + "If it fails, please manually execute \n"
+          + "python3 -m pip install webdriver_manager\n")
     install("webdriver_manager")
 
 try:
@@ -78,19 +78,19 @@ try:
 
     init(autoreset=True)
 except ModuleNotFoundError:
-    print("Colorama is not installed. "
-          + "Longinus will try to automatically install it "
-          + "If it fails, please manually execute "
-          + "python3 -m pip install colorama")
+    print("Colorama is not installed. \n"
+          + "Longinus will try to automatically install it \n"
+          + "If it fails, please manually execute \n"
+          + "python3 -m pip install colorama\n")
     install("colorama")
 
 try:
     from termcolor import colored
 except ModuleNotFoundError:
-    print("termcolor is not installed. "
-          + "Longinus will try to automatically install it "
-          + "If it fails, please manually execute "
-          + "python3 -m pip install termcolor")
+    print("termcolor is not installed. \n"
+          + "Longinus will try to automatically install it \n"
+          + "If it fails, please manually execute \n"
+          + "python3 -m pip install termcolor\n")
     install("termcolor")
 
 VERSION = "1.1"
