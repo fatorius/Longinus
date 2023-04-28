@@ -13,7 +13,7 @@ It's name comes from a popular tradition which says that the catholic saint [Lon
 
 This project is open-source, so feel free to contribute, report issues or make suggestions.
 
-For any other cases, feel free to email me at [mail@hugosouza.com](mailto:mail@hugosouza.com)
+For any other cases, feel free to email me at [hugo@kunum.com](mailto:hugo@kunum.com)
 
 ## Doumentation
 
